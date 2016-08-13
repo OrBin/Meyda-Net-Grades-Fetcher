@@ -2,19 +2,20 @@
 
 import sys
 import fetch
-import time
 import logging
 import smtplib
 from email.mime.text import MIMEText
-import gc
-import json 
+import json
 from datetime import datetime
 import os
+from ghost import TimeoutError
 
 reload(sys)
 sys.setdefaultencoding("utf-8")
 
-FILE_NAME = "last_grades.json"
+FILENAME = "last_grades.json"
+FULL_FILE_PATH = os.path.abspath(os.path.dirname(__file__)) + "/" + FILENAME
+FETCH_TRIES = 5
 
 logging.basicConfig(filename='log.txt',
 					filemode='a',
@@ -32,47 +33,42 @@ email_address = file.readline().strip()
 email_pass = file.readline().strip()
 file.close()
 
-prev_grades = {}
+prev_grades = None
 prev_timestamp = None
-
-if os.path.isfile(FILE_NAME):
-	with open(FILE_NAME, "r") as f:
-		prev_data_from_file = json.loads("".join(f.readlines()))
-		print prev_data_from_file
-		prev_timestamp = prev_data_from_file[u'time']
-		#for key,val in prev_data_from_file[u'grades'].iteritems():
-		#	prev_grades[tuple(key.split(";"))] = val
-		prev_grades = prev_data_from_file[u'grades']
-
 curr_grades = None
 curr_timestamp = int((datetime.now() - datetime(1970,1,1)).total_seconds())
 
-try:
-	curr_grades = fetch.fetch_grades("2016", "0", base_meyda_net_url, id_number, meyda_net_password)
-except TimeoutError as timeout_err:
-	logging.info("Timeout reached. Retrying...")
+# Reading previous grades from file
+if not os.path.isfile(FULL_FILE_PATH):
+	logging.info("No previous file")
+else:
+	logging.info("Reading previous file")
+	with open(FULL_FILE_PATH, "r") as f:
+		prev_data_from_file = json.loads("".join(f.readlines()))
+		prev_timestamp = prev_data_from_file[u'time']
+		prev_grades = prev_data_from_file[u'grades']
+
+# Fetching current grades
+for i in range(1, FETCH_TRIES+1):
+	try:
+		logging.info("Trying to fetch grades, attempt %s of %s" % (i, FETCH_TRIES))
+		curr_grades = fetch.fetch_grades("2016", "0", base_meyda_net_url, id_number, meyda_net_password, timeout=None)
+		break
+	except TimeoutError as timeout_err:
+		if i != FETCH_TRIES:
+			logging.info("Timeout reached. Retrying...")
+		else:
+			logging.info("Maximum attempts reached. Exiting.")
+			sys.exit(1)
 
 try:
+	# Writing current grades to file
 	data = {"time": curr_timestamp, "grades": curr_grades}
-	print data
 	data_json = json.dumps(data, ensure_ascii=False)
-	print
-	print
-	print
-	print
-	print
-	print data_json
-	with open(FILE_NAME, "w") as f:
+	with open(FULL_FILE_PATH, "w") as f:
 		f.write(data_json)
 
-	print "Curr:"
-	for k in curr_grades.iterkeys():
-		print k
-	print "Prev:"
-	for k in prev_grades.iterkeys():
-		print k
-
-	# Every difference will be a tuple of (course, semester, moed, prev_grade, curr_grade)
+	# Every difference will be a tuple of ("course;semester;moed", prev_grade, curr_grade)
 	differences = []
 
 	# Add differences to the list
@@ -85,7 +81,7 @@ try:
 				differences.append((ukey, prev_grades[ukey], curr_grade))
 
 	if len(differences) == 0:
-		logging.info("לא השתנה כלום")
+		logging.info("---No Changes---")
 	else:
 		email_text = ""
 
@@ -107,8 +103,6 @@ try:
 			msg['From'] = email_address
 			msg['To'] = email_address
 
-			print email_text
-
 			s = smtplib.SMTP('smtp.gmail.com', 587)
 			s.ehlo()
 			s.starttls()
@@ -116,10 +110,5 @@ try:
 			s.sendmail(email_address, [email_address], msg.as_string())
 			s.quit()
 
-
-#except TimeoutError as timeout_err:
-#	logging.info("Timeout, retrying")
 except Exception as exc:
-	print exc
 	logging.exception(exc)
-	raise exc
