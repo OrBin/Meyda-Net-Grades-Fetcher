@@ -68,6 +68,10 @@ try:
 	with open(FULL_FILE_PATH, "w") as f:
 		f.write(data_json)
 
+	# If there are no previous grades, there is nothing to compare to
+	if not prev_grades:
+		sys.exit(0)
+
 	# Every difference will be a tuple of ("course;semester;moed", prev_grade, curr_grade)
 	differences = []
 
