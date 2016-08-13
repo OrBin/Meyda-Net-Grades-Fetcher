@@ -17,7 +17,7 @@ FILENAME = "last_grades.json"
 FULL_FILE_PATH = os.path.abspath(os.path.dirname(__file__)) + "/" + FILENAME
 FETCH_TRIES = 5
 
-logging.basicConfig(filename='log.txt',
+logging.basicConfig(filename=os.path.abspath(os.path.dirname(__file__)) + "/" + 'log.txt',
 					filemode='a',
 					level=logging.DEBUG,
 					format="%(asctime)s %(levelname)s %(module)s %(message)s",
@@ -25,7 +25,7 @@ logging.basicConfig(filename='log.txt',
 
 logging.info("**************** Starting service ****************")
 logging.debug("Debug message for testing")
-file = open("login_data.txt", "r")
+file = open(os.path.abspath(os.path.dirname(__file__)) + "/" + "login_data.txt", "r")
 base_meyda_net_url = file.readline().strip()
 id_number = file.readline().strip()
 meyda_net_password = file.readline().strip()
