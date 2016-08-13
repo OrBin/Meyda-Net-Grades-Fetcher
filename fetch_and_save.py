@@ -9,9 +9,12 @@ from email.mime.text import MIMEText
 import gc
 import json 
 from datetime import datetime
+import os
 
 reload(sys)
 sys.setdefaultencoding("utf-8")
+
+FILE_NAME = "last_grades.json"
 
 logging.basicConfig(filename='log.txt',
 					filemode='a',
@@ -29,22 +32,94 @@ email_address = file.readline().strip()
 email_pass = file.readline().strip()
 file.close()
 
-curr_grades = None
+prev_grades = {}
+prev_timestamp = None
 
-#try:
-curr_grades = fetch.fetch_grades("2016", "0", base_meyda_net_url, id_number, meyda_net_password)
-data = {"time": int((datetime.now() - datetime(1970,1,1)).total_seconds()),
-	"grades": curr_grades}
-print data
-data_json = json.dumps(data, ensure_ascii=False)
-print
-print
-print
-print
-print
-print data_json
-with open("last_grades.json", "w") as f:
-	f.write(data_json)
-#except Exception as exc:
-#	print exc
-#	logging.exception(exc)
+if os.path.isfile(FILE_NAME):
+	with open(FILE_NAME, "r") as f:
+		prev_data_from_file = json.loads("".join(f.readlines()))
+		print prev_data_from_file
+		prev_timestamp = prev_data_from_file[u'time']
+		#for key,val in prev_data_from_file[u'grades'].iteritems():
+		#	prev_grades[tuple(key.split(";"))] = val
+		prev_grades = prev_data_from_file[u'grades']
+
+curr_grades = None
+curr_timestamp = int((datetime.now() - datetime(1970,1,1)).total_seconds())
+
+try:
+	curr_grades = fetch.fetch_grades("2016", "0", base_meyda_net_url, id_number, meyda_net_password)
+except TimeoutError as timeout_err:
+	logging.info("Timeout reached. Retrying...")
+
+try:
+	data = {"time": curr_timestamp, "grades": curr_grades}
+	print data
+	data_json = json.dumps(data, ensure_ascii=False)
+	print
+	print
+	print
+	print
+	print
+	print data_json
+	with open(FILE_NAME, "w") as f:
+		f.write(data_json)
+
+	print "Curr:"
+	for k in curr_grades.iterkeys():
+		print k
+	print "Prev:"
+	for k in prev_grades.iterkeys():
+		print k
+
+	# Every difference will be a tuple of (course, semester, moed, prev_grade, curr_grade)
+	differences = []
+
+	# Add differences to the list
+	for key, curr_grade in curr_grades.iteritems():
+		ukey = key.decode("utf-8")
+		if ukey not in prev_grades.keys():
+			differences.append((ukey, None, curr_grade))
+		else:
+			if curr_grade != prev_grades[ukey]:
+				differences.append((ukey, prev_grades[ukey], curr_grade))
+
+	if len(differences) == 0:
+		logging.info("לא השתנה כלום")
+	else:
+		email_text = ""
+
+		for diff in differences:
+			logging.info("קורס %s סמסטר %s מועד %s:" % (diff[0], diff[1], diff[2]))
+			logging.info("השתנה מ-%s ל-%s" % (diff[3] if diff[3] else "לא קיים", diff[4]))
+
+			email_text += "הציון בקורס %s סמסטר %s מועד %s השתנה מ-%s ל-%s\n\n" % (diff[0],  # course
+																				   diff[1],  # semester
+																				   diff[2],  # moed
+																				   diff[3] if diff[
+																					   3] else "לא קיים",
+																				   # prev_grade
+																				   diff[4])  # curr_grade
+
+			msg = MIMEText(email_text)
+
+			msg['Subject'] = 'ציון חדש במידע-נט'
+			msg['From'] = email_address
+			msg['To'] = email_address
+
+			print email_text
+
+			s = smtplib.SMTP('smtp.gmail.com', 587)
+			s.ehlo()
+			s.starttls()
+			s.login(email_address, email_pass)
+			s.sendmail(email_address, [email_address], msg.as_string())
+			s.quit()
+
+
+#except TimeoutError as timeout_err:
+#	logging.info("Timeout, retrying")
+except Exception as exc:
+	print exc
+	logging.exception(exc)
+	raise exc
