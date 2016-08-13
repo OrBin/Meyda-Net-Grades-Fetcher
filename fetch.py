@@ -44,14 +44,17 @@ def fetch_grades (year, semester, base_meyda_net_url, id_number, meyda_net_passw
 		index += 1
 
 	curr_grades = {}
+	import unicodedata
+
+	#unicode_to_ascii = lambda utext: unicodedata.normalize("NFKD", utext).encode("utf-8", "ignore")
 	extract_text_by_key = lambda key: line_cells[table_col_dict[key]].text.strip().encode("utf-8")
 
 	for tr in table.find("tbody").find_all("tr"):
 		line_cells = tr.find_all("td")
 		if ("שעור" in extract_text_by_key("סוג מקצוע")):
-			curr_grades[(extract_text_by_key("שם קורס"),
-					extract_text_by_key("סמסטר"),
-					extract_text_by_key("מועד"))] = extract_text_by_key("ציון")
+			curr_grades[extract_text_by_key("שם קורס") + ";" +
+					extract_text_by_key("סמסטר") + ";" +
+					extract_text_by_key("מועד")] = extract_text_by_key("ציון")
 
 	gc.collect()
 	return curr_grades
