@@ -90,6 +90,9 @@ try:
 		email_text = ""
 
 		for diff in differences:
+			course, semester, moed = map(str, diff[0].split(";"))
+			diff = (course, semester, moed, str(diff[1]), diff[2])
+
 			logging.info("קורס %s סמסטר %s מועד %s:" % (diff[0], diff[1], diff[2]))
 			logging.info("השתנה מ-%s ל-%s" % (diff[3] if diff[3] else "לא קיים", diff[4]))
 
