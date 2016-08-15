@@ -64,7 +64,7 @@ for i in range(1, FETCH_TRIES+1):
 try:
 	# Writing current grades to file
 	data = {"time": curr_timestamp, "grades": curr_grades}
-	data_json = json.dumps(data, ensure_ascii=False)
+	data_json = json.dumps(data, ensure_ascii=False, sort_keys=True, indent=4, separators=(',', ': '))
 	with open(FULL_FILE_PATH, "w") as f:
 		f.write(data_json)
 
