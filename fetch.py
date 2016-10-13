@@ -32,13 +32,14 @@ def fetch_grades (year, semester, base_meyda_net_url, id_number, meyda_net_passw
 
 	logging.info("Starting parsing process")
 	parser = BeautifulSoup(str(page.content), "lxml")
-	table = parser.find("table", class_="tablesorter")
+	table = parser.find("table", class_="SortMe")
+	table_thead = table.find("thead")
 
 	HEADERS = ["סמסטר", "שם קורס", "מועד", "ציון", "סוג מקצוע"]
 	table_col_dict = {}
 
 	index = 0
-	for th in table.find("thead").find("tr").find_all("th"):
+	for th in table_thead.find("tr").find_all("th"):
 		current_header = th.text.strip().encode("utf-8")
 		if current_header in HEADERS:
 			table_col_dict[current_header] = index
