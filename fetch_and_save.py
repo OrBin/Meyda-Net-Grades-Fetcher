@@ -52,7 +52,7 @@ else:
 for i in range(1, FETCH_TRIES+1):
 	try:
 		logging.info("Trying to fetch grades, attempt %s of %s" % (i, FETCH_TRIES))
-		curr_grades = fetch.fetch_grades("2016", "0", base_meyda_net_url, id_number, meyda_net_password, timeout=None)
+		curr_grades = fetch.fetch_grades("2017", "0", base_meyda_net_url, id_number, meyda_net_password, timeout=None)
 		break
 	except TimeoutError as timeout_err:
 		if i != FETCH_TRIES:
