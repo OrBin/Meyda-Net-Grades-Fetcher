@@ -4,10 +4,9 @@ import sys
 import fetch
 import logging
 import requests
-import json
 from datetime import datetime
 import os
-from ghost import TimeoutError
+import files
 
 reload(sys)
 sys.setdefaultencoding("utf-8")
@@ -16,106 +15,65 @@ DATA_FILE_PATH = os.path.abspath(os.path.dirname(__file__)) + "/" + "last_grades
 CONF_FILE_PATH = os.path.abspath(os.path.dirname(__file__)) + "/" + "config.json"
 FETCH_TRIES = 5
 
-prev_grades = None
-prev_timestamp = None
-curr_grades = None
-config = None
 
 logging.basicConfig(filename=os.path.abspath(os.path.dirname(__file__)) + "/" + 'log.txt',
 					filemode='a',
 					level=logging.DEBUG,
 					format="%(asctime)s %(levelname)s %(module)s %(message)s",
 					datefmt='%Y-%m-%d %H:%M:%S %Z')
+logging.info("**************** Starting job ****************")
 
-logging.info("**************** Starting service ****************")
-logging.debug("Debug message for testing")
+config = files.read_configuration_file(CONF_FILE_PATH)
+previous_grades = files.read_saved_grades(DATA_FILE_PATH)
 
-if not os.path.isfile(CONF_FILE_PATH):
-	logging.critical("No configuration file found at '%s'", CONF_FILE_PATH)
-	sys.exit(1)
-else:
-	logging.info("Reading configuration file")
-	with open(CONF_FILE_PATH, "r") as f:
-		config = json.loads("".join(f.readlines()))
+
+grades_to_save = {"users": {}}
 
 for user in config["users"]:
-	base_meyda_net_url = user["base_meyda_net_url"]
-	id_number = user["id_number"]
-	meyda_net_password = user["meyda_net_password"]
-	email_address = user["email_address"]
 
-	curr_timestamp = int((datetime.now() - datetime(1970,1,1)).total_seconds())
-
-	# Reading previous grades from file
-	if not os.path.isfile(DATA_FILE_PATH):
-		logging.info("No previous file")
-	else:
-		logging.info("Reading previous file")
-		with open(DATA_FILE_PATH, "r") as f:
-			prev_data_from_file = json.loads("".join(f.readlines()))
-			prev_timestamp = prev_data_from_file[u'time']
-			prev_grades = prev_data_from_file[u'grades']
-
-	# Fetching current grades
-	for i in range(1, FETCH_TRIES+1):
-		try:
-			logging.info("Trying to fetch grades, attempt %s of %s" % (i, FETCH_TRIES))
-			curr_grades = fetch.fetch_grades("2017", "0", base_meyda_net_url, id_number, meyda_net_password, timeout=None)
-			break
-		except TimeoutError as timeout_err:
-			if i != FETCH_TRIES:
-				logging.info("Timeout reached. Retrying...")
-			else:
-				logging.info("Maximum attempts reached. Exiting.")
-				sys.exit(1)
+	results = fetch.try_fetching("2017", "0", user["base_meyda_net_url"], user["id_number"], user["meyda_net_password"], FETCH_TRIES, timeout=None)
+	grades_to_save["users"][str(user["id_number"])] = {"grades": results, "time": int((datetime.now() - datetime(1970, 1, 1)).total_seconds())}
 
 	try:
-		# Writing current grades to file
-		data = {"time": curr_timestamp, "grades": curr_grades}
-		data_json = json.dumps(data, ensure_ascii=False, sort_keys=True, indent=4, separators=(',', ': '))
-		with open(DATA_FILE_PATH, "w") as f:
-			f.write(data_json)
-
 		# If there are no previous grades, there is nothing to compare to
-		if not prev_grades:
-			sys.exit(0)
+		if previous_grades and (str(user["id_number"]) in previous_grades["users"]):
+			user_previous_grades = previous_grades["users"][str(user["id_number"])]
 
-		# Every difference will be a tuple of ("course;semester;moed", prev_grade, curr_grade)
-		differences = []
+			if user_previous_grades and len(user_previous_grades) > 0:
 
-		# Add differences to the list
-		for key, curr_grade in curr_grades.iteritems():
-			ukey = key.decode("utf-8")
-			if ukey not in prev_grades.keys():
-				differences.append((ukey, None, curr_grade))
-			else:
-				if curr_grade != prev_grades[ukey]:
-					differences.append((ukey, prev_grades[ukey], curr_grade))
+				# Every difference is a tuple of ("course;semester;moed", prev_grade, curr_grade)
+				differences = []
 
-		if len(differences) == 0:
-			logging.info("---No Changes---")
-		else:
-			email_text = ""
+				# Add differences to the list
+				for key, curr_grade in results.iteritems():
+					ukey = key.decode("utf-8")
+					if ukey not in user_previous_grades["grades"].keys():
+						differences.append((ukey, None, curr_grade))
+					elif curr_grade != user_previous_grades["grades"][ukey]:
+							differences.append((ukey, user_previous_grades["grades"][ukey], curr_grade))
 
-			for diff in differences:
-				course, semester, moed = map(str, diff[0].split(";"))
-				diff = (course, semester, moed, str(diff[1]), diff[2])
+				if len(differences) == 0:
+					logging.info("---No Changes---")
+				else:
+					email_text = ""
+					for diff in differences:
+						diff_fields = map(str, diff[0].split(";")) + [diff[1], diff[2]]
+						if not diff_fields[3]:
+							diff_fields[3] = "לא קיים"
 
-				logging.info("קורס %s סמסטר %s מועד %s:" % (diff[0], diff[1], diff[2]))
-				logging.info("השתנה מ-%s ל-%s" % (diff[3] if diff[3] else "לא קיים", diff[4]))
+						logging.info("קורס %s סמסטר %s מועד %s:" % tuple(diff_fields[0:3]))
+						logging.info("השתנה מ-%s ל-%s" % tuple(diff_fields[3:5]))
 
-				email_text += "הציון בקורס %s סמסטר %s מועד %s השתנה מ-%s ל-%s\n\n" % (diff[0],  # course
-																					   diff[1],  # semester
-																					   diff[2],  # moed
-																					   diff[3] if diff[3] else "לא קיים", # prev_grade
-																					   diff[4])  # curr_grade
+						email_text += "הציון בקורס %s סמסטר %s מועד %s השתנה מ-%s ל-%s\n\n" % tuple(diff_fields)
 
-				res = requests.post("{}/messages".format(config["api_base_url"]),
-				                    auth=("api", config["api_key"]),
-				                    data={"from": "Meyda Net Grades Fetcher <{}>".format(config["sending_email_address"]),
-				                          "to": email_address,
-				                          "subject": "ציון חדש במידע-נט",
-				                          "text": email_text})
+					email_request_url = config["api_base_url"] + "/messages"
+					email_request_data = {"from": "Meyda Net Grades Fetcher <%s>" % config["sending_email_address"],
+											"to": user["email_address"],
+											"subject": "ציון חדש במידע-נט",
+											"text": email_text}
+					email_response = requests.post(email_request_url, auth=("api", config["api_key"]), data=email_request_data)
 
 	except Exception as exc:
 		logging.exception(exc)
+
+files.save_grades(grades_to_save, DATA_FILE_PATH)

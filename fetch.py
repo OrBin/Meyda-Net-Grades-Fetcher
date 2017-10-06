@@ -4,9 +4,11 @@ from ghost.ghost import Ghost
 from bs4 import BeautifulSoup
 import sys
 import logging
-import gc
+from ghost import TimeoutError
 
-def fetch_grades (year, semester, base_meyda_net_url, id_number, meyda_net_password, timeout=None):
+
+def fetch_grades(year, semester, base_meyda_net_url, id_number, meyda_net_password, timeout=None):
+
 	logging.info("Starting fetching process")
 	reload(sys)
 	sys.setdefaultencoding("utf-8")
@@ -25,10 +27,10 @@ def fetch_grades (year, semester, base_meyda_net_url, id_number, meyda_net_passw
 
 	# R1C2=0 means "שנתי"
 	page, extra_resources = ghost.open((base_meyda_net_url +
-									   "/fireflyweb.aspx?PRGname=Bitsua_maarechet_shaot" +
-									   "&ARGUMENTS=TZ,UNIQ,MisparSheilta,R1C1,R1C2&TZ=" +
-									   id_number + "&UNIQ=%s&MisparSheilta=13&R1C1=" + year + "&R1C2=" + semester) % uniq,
-									   timeout=timeout)
+										"/fireflyweb.aspx?PRGname=Bitsua_maarechet_shaot" +
+										"&ARGUMENTS=TZ,UNIQ,MisparSheilta,R1C1,R1C2&TZ=" +
+										id_number + "&UNIQ=%s&MisparSheilta=13&R1C1=" + year + "&R1C2=" + semester) % uniq,
+										timeout=timeout)
 
 	logging.info("Starting parsing process")
 	parser = BeautifulSoup(str(page.content), "lxml")
@@ -46,17 +48,29 @@ def fetch_grades (year, semester, base_meyda_net_url, id_number, meyda_net_passw
 		index += 1
 
 	curr_grades = {}
-	import unicodedata
 
-	#unicode_to_ascii = lambda utext: unicodedata.normalize("NFKD", utext).encode("utf-8", "ignore")
-	extract_text_by_key = lambda key: line_cells[table_col_dict[key]].text.strip().encode("utf-8")
+	def extract_text_by_key(key):
+		return line_cells[table_col_dict[key]].text.strip().encode("utf-8")
 
 	for tr in table.find("tbody").find_all("tr"):
 		line_cells = tr.find_all("td")
-		if ("שעור" in extract_text_by_key("סוג מקצוע")):
-			curr_grades[extract_text_by_key("שם קורס") + ";" +
-					extract_text_by_key("סמסטר") + ";" +
-					extract_text_by_key("מועד")] = extract_text_by_key("ציון")
+		if "שעור" in extract_text_by_key("סוג מקצוע"):
+			ukey =  extract_text_by_key("שם קורס") + ";" +  extract_text_by_key("סמסטר") + ";" + extract_text_by_key("מועד")
+			curr_grades[ukey] = extract_text_by_key("ציון")
 
-	gc.collect()
 	return curr_grades
+
+
+def try_fetching(year, semester, base_meyda_net_url, id_number, meyda_net_password, number_of_retries, timeout=None):
+
+	# Fetching current grades
+	for i in range(1, number_of_retries+1):
+		try:
+			logging.info("Trying to fetch grades, attempt %s of %s" % (i, number_of_retries))
+			return fetch_grades(year, semester, base_meyda_net_url, id_number, meyda_net_password, timeout=timeout)
+		except TimeoutError:
+			if i != number_of_retries:
+				logging.info("Timeout reached. Retrying...")
+			else:
+				logging.info("Maximum attempts reached. Exiting.")
+				return None
