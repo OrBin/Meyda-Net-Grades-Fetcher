@@ -17,6 +17,9 @@ def fetch_grades(year, semester, base_meyda_net_url, id_number, meyda_net_passwo
 
 	page, extra_resources = ghost.open(base_meyda_net_url + "/fireflyweb.aspx", timeout=timeout)
 
+	if not page:
+		return None
+
 	result, resources = ghost.set_field_value("input[name=R1C1]", id_number)
 	result, resources = ghost.set_field_value("input[name=R1C2]", meyda_net_password)
 	page, resources = ghost.call("form", "submit", expect_loading=True)
@@ -67,7 +70,9 @@ def try_fetching(year, semester, base_meyda_net_url, id_number, meyda_net_passwo
 	for i in range(1, number_of_retries+1):
 		try:
 			logging.info("Trying to fetch grades, attempt %s of %s" % (i, number_of_retries))
-			return fetch_grades(year, semester, base_meyda_net_url, id_number, meyda_net_password, timeout=timeout)
+			results = fetch_grades(year, semester, base_meyda_net_url, id_number, meyda_net_password, timeout=timeout)
+			if results:
+				return results
 		except TimeoutError:
 			if i != number_of_retries:
 				logging.info("Timeout reached. Retrying...")

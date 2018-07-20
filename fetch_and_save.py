@@ -25,13 +25,16 @@ logging.info("**************** Starting job ****************")
 
 config = files.read_configuration_file(CONF_FILE_PATH)
 previous_grades = files.read_saved_grades(DATA_FILE_PATH)
-
-
 grades_to_save = {"users": {}}
 
 for user in config["users"]:
 
 	results = fetch.try_fetching("2017", "0", user["base_meyda_net_url"], user["id_number"], user["meyda_net_password"], FETCH_TRIES, timeout=None)
+
+	if not results:
+		if previous_grades and (str(user["id_number"]) in previous_grades["users"]):
+			grades_to_save["users"][str(user["id_number"])] = previous_grades["users"][str(user["id_number"])]
+		continue
 	grades_to_save["users"][str(user["id_number"])] = {"grades": results, "time": int((datetime.now() - datetime(1970, 1, 1)).total_seconds())}
 
 	try:
