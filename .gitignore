@@ -1,6 +1,7 @@
 login_data.txt
 log.txt
 last_grades.json
+config.json
 
 # Created by https://www.gitignore.io/api/python,pycharm
 
